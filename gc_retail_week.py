@@ -1,8 +1,11 @@
 from datetime import datetime, date, timedelta
 import math
+import numpy as np
+import pandas as pd
 
-MonthWeekDic = {'January':1,'February':5,'March':10,'April':14,'May':18,'June':23,'July':27,'August':31,'September':36,'October':40,'November':44,'December':49}
-
+MONTH_WEEK_DIC = {'January':1,'February':5,'March':10,'April':14,'May':18,'June':23,'July':27,'August':31,'September':36,'October':40,'November':44,'December':49}
+QUARTER_DICT = {'January':1,'February':1,'March':1,'April':2,'May':2,'June':2,'July':3,'August':3,'September':3,'October':4,'November':4,'December':4}
+QUARTER_START_DICT = {1:'January',2:'April',3:'July',4:'October'}
 class GCWeek(object):
     '''
     Returns the a calendar representing the Gear Coop implementation
@@ -10,14 +13,28 @@ class GCWeek(object):
     *Running Sunday through Saturday
     '''
     def __init__(self, d=date.today()):
+        if d == np.NaN: 
+           d = date.today()
+        elif isinstance(d,pd.Timestamp):
+            d = d.date()
+            # print(type(d))
+        elif isinstance(d,pd.DatetimeIndex):
+            d = d.date
+            # print(type(d))
+        elif isinstance(d,datetime):
+            d = d.date
+        # else:
+        #     print(type(d))
         self.date = d
         self.gc_week = get_gc_week(d)
         self.weeks_in_year = get_weeks_in_year(d)
         self.week = get_gc_week_only(d)
-        self.year_week = gc_week_string(get_gc_week(d))
+        # self.year_week = gc_week_string(get_gc_week(d))
+        self.year_week = gc_week_string(self.gc_week)
         self.following_saturday = get_following_saturday(d)
-        self.previous_sunday = get_previous_sunday(d)       
-
+        self.previous_sunday = get_previous_sunday(d)
+        # self.quarter = current_quarter()
+        # self.quarter = get_quarter()
     def lw(self):
         '''
         Return the last week as an int %Y%m
@@ -93,8 +110,8 @@ class GCWeek(object):
     def retail_month_name(self):
         cw = int(gc_week_string(self.gc_week).split('-')[1])
         # print(cw)
-        keys = list(MonthWeekDic.keys())
-        vals = MonthWeekDic.values()
+        keys = list(MONTH_WEEK_DIC.keys())
+        vals = MONTH_WEEK_DIC.values()
         c = 0
         if cw >= 49:
             return keys[len(keys)-1]
@@ -108,7 +125,7 @@ class GCWeek(object):
     def retail_month(self):
         cw = int(gc_week_string(self.gc_week).split('-')[1])
         print(cw)
-        vals = MonthWeekDic.values()
+        vals = MONTH_WEEK_DIC.values()
         prev = 1
         if cw >= 49:
             return 49
@@ -119,16 +136,66 @@ class GCWeek(object):
                 prev = v
                 continue
             return prev
+    def current_quarter(self):
+        '''
+        returns the current quarter
+        '''
+        return QUARTER_DICT[self.retail_month_name()]
+    def get_quarter(self,quarter=0):
+        '''
+        returns a dict of the quarter as an int and a list of gcw strings for that quarter to date
+        '''
+        if quarter == 0:
+            m = self.retail_month_name()
+            # print('retail_month_name {}'.format(m))
+            q = QUARTER_DICT[m]
+            # print('QUARTER_DICT[m] {}'.format(q))
+            q_start = QUARTER_START_DICT[q]
+            # print('QUARTER_START_DICT[q] {}'.format(q_start))
+            if q_start == m:
+                mtdl = self.mtd()
+                print(mtdl)
+                return {q:gcw_list_tostring(mtdl)}
+            # if self.week == MONTH_WEEK_DIC[q_start]:
+            y = get_fiscal_year(self.date)
+            cw = self.week
+            # print('current week {}'.format(cw))
+            gcws = []
+            for i in range(MONTH_WEEK_DIC[q_start],cw):
+                gcws.append(str(y)+'-'+str(i).zfill(2))
+            return {q:gcws}
+        
+        q_start = QUARTER_START_DICT[quarter]
+        if quarter < 4:
+            q_end = MONTH_WEEK_DIC[QUARTER_START_DICT[quarter+1]]
+        else:
+            q_end = get_weeks_in_year(date.today())
+        # print('QUARTER_START_DICT[q] {}'.format(q_start))
+        y = get_fiscal_year(self.date)
+        # print('quarter end {}'.format(q_end))
+        gcws = []
+        for i in range(MONTH_WEEK_DIC[q_start],q_end):
+            gcws.append(str(y)+'-'+str(i).zfill(2))
+        return {quarter:gcws}
+    def get_quarter_year(self):
+        y = get_fiscal_year(self.date)
+        q = self.current_quarter()
+        return str(y)+'Q'+str(q)
     def mtd(self):
         '''
         returns a list of ints for the current GC Week month to date
         '''
         year = get_fiscal_year(self.date)
-        rm = self.retail_month()
+        rm = int(self.retail_month())
         cw = int(gc_week_string(self.gc_week).split('-')[1])
+        # print('retail month start {}'.format(rm))
+        # print('current week {}'.format(cw))
         l = []
         if cw == rm:
-            return list(str(year)+str(cw))
+            ret = str(year)+str(cw).zfill(2)
+            # print('matched returning {}'.format(ret))
+            l.append(ret)
+            return l
         else:
             w = cw - rm
             for i in range(w + 1):
@@ -147,23 +214,53 @@ class GCWeek(object):
         # d = abs((end - start)).days
         
         # return d
+    def rolling_n_weeks(self,n,poptw=False):
+        '''
+        Return a list of the last n retail weeks as ints
+        poptw is a boolean for removing this weeks data from the list
+        '''
+        if isinstance(n,(float,complex)):
+            n = int(n)
+        if poptw:
+            roll = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=n),self.date))
+            roll.pop()
+        else:
+            roll = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=n),self.date))
+        print(roll)
+        
+        return roll
+    def rolling_n_months(self,n,poptw=False):
+        '''
+        Return a list of the last n retail months as ints
+        poptw is a boolean for removing this weeks data from the list
+        '''
+        if isinstance(n,(float,complex)):
+            n = int(n)
+        return rolling_n_weeks(n*4,poptw)
     def three_month_rolling(self,poptw=False):
         '''
         Return a list of the last 3 retail months as ints
         poptw is a boolean for removing this weeks data from the list
         '''
         rmstart = self.retail_month()
-        l3m = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=12),self.date))
+        if poptw:
+            l3m = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=13),self.date))
+            l3m.pop()
+        else:
+            l3m = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=12),self.date))
         print(l3m)
+        '''
+        Need to figure out why I implemented this
         startcheck = int(gc_week_string(l3m[-1]).split('-')[1])
         print(startcheck)
         if startcheck - rmstart > 0:
             delta = startcheck - rmstart + 1 
             l3m = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=12 + delta),self.date))
-        print('length of list {}'.format(len(l3m)))
-        if poptw:
-            l3m.pop()
-            print('length of list after pop {}'.format(len(l3m)))
+        '''
+        # print('length of list {}'.format(len(l3m)))
+        # if poptw:
+        #     l3m.pop()
+            # print('length of list after pop {}'.format(len(l3m)))
         return l3m
     def three_month_rolling_tostring(self,poptw=False):
         '''
@@ -178,6 +275,32 @@ class GCWeek(object):
         for v in l:
             s.append(gc_week_string(v))
         return s
+    def six_month_rolling(self,poptw=False):
+        '''
+        Return a list of the last 3 retail months as ints
+        poptw is a boolean for removing this weeks data from the list
+        '''
+        rmstart = self.retail_month()
+        if poptw:
+            wks = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=25),self.date))
+            wks.pop()
+        else:
+            wks = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=24),self.date))
+        
+        return wks
+    def six_month_rolling_tostring(self,poptw=False):
+        '''
+        Return a list of the last 3 retail months as strings
+        poptw is a boolean for removing this weeks data from the list
+        '''
+        if poptw:
+            l = self.six_month_rolling(poptw=True)
+        else:
+            l = self.six_month_rolling(poptw=False)
+        s = []
+        for v in l:
+            s.append(gc_week_string(v))
+        return s
     
     def thirteen_month_rolling(self,poptw=False):
         '''
@@ -185,15 +308,22 @@ class GCWeek(object):
         poptw is a boolean for removing this weeks data from the list
         '''
         rmstart = self.retail_month()
-        l13m = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=53),self.date))
-        startcheck = int(gc_week_string(l13m[0]).split('-')[1])
-        if startcheck - rmstart > 0:
-            delta = startcheck - rmstart
-            l13m = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=53 + delta),self.date))
-        print('length of list {}'.format(len(l13m)))
+        weeks_ly = get_weeks_in_year(self.date - timedelta(days=365))
         if poptw:
+            # l13m = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=57),self.date))
+            l13m = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=weeks_ly+4),self.date))
             l13m.pop()
-            print('length of list after pop {}'.format(len(l13m)))
+        else:
+            l13m = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=weeks_ly+4),self.date))
+        # startcheck = int(gc_week_string(l13m[0]).split('-')[1])
+        # if startcheck - rmstart > 0:
+        #     delta = startcheck - rmstart
+        #     l13m = list(get_weeks_between_dates_inclusive(self.date-timedelta(weeks=56 + delta),self.date))
+        # print('length of list {}'.format(len(l13m)))
+        # if poptw:
+        #     l13m.pop()
+        #     print('length of list after pop {}'.format(len(l13m)))
+        print(l13m)
         return l13m
     def thirteen_month_rolling_tostring(self,poptw=False):
         '''
@@ -399,7 +529,7 @@ def gc_week_todate(gcw):
     # w = int(gc_str.split('-')[1])
     # d = y+"-W"+w
 def get_retail_month_start(cw):
-        vals = MonthWeekDic.values()        
+        vals = MONTH_WEEK_DIC.values()        
         for v in vals:
             if cw == v:
                 return cw
@@ -407,6 +537,8 @@ def get_retail_month_start(cw):
                 continue
             return v
 def get_weeks_in_year(d):
+    if d is None:
+        d = date.today()
     if (d.year % 6) != 0:
         return 52
     else:
@@ -424,4 +556,16 @@ def gc_week_string(gcw):
         else:
             yw = yw+s+'-' 
     return yw
-
+def gcw_list_tostring(t=[]):
+    '''
+    returns a list of GC Weeks in gc_week_string(gcw) format
+    '''
+    l = []
+    if t == None:
+        print('t == None')
+        return l.append(gc_week_string(GCWeek(date.today()).gc_week))
+    # if len(t) == 0:
+    #     return l
+    for v in t:
+        l.append(gc_week_string(v))
+    return l
