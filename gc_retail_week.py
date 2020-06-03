@@ -13,7 +13,7 @@ class GCWeek(object):
     *Running Sunday through Saturday
     '''
     def __init__(self, d=date.today()):
-        if d == np.NaN: 
+        if d in (np.NaN,pd.NaT): 
            d = date.today()
         elif isinstance(d,pd.Timestamp):
             d = d.date()
@@ -22,7 +22,7 @@ class GCWeek(object):
             d = d.date
             # print(type(d))
         elif isinstance(d,datetime):
-            d = d.date
+            d = d.date()
         # else:
         #     print(type(d))
         self.date = d
@@ -107,8 +107,11 @@ class GCWeek(object):
             return (sat + timedelta(days=1))
         else:
             return lytd
-    def retail_month_name(self):
-        cw = int(gc_week_string(self.gc_week).split('-')[1])
+    def retail_month_name(self,gcw=''):
+        if gcw:
+            cw = int(gcw.split('-')[1])
+        else:
+            cw = int(gc_week_string(self.gc_week).split('-')[1])
         # print(cw)
         keys = list(MONTH_WEEK_DIC.keys())
         vals = MONTH_WEEK_DIC.values()
@@ -122,8 +125,11 @@ class GCWeek(object):
                 c += 1   
                 continue
             return keys[c-1]
-    def retail_month(self):
-        cw = int(gc_week_string(self.gc_week).split('-')[1])
+    def retail_month(self,gcw=''):
+        if gcw:
+            cw = int(gcw.split('-')[1])
+        else:
+            cw = int(gc_week_string(self.gc_week).split('-')[1])
         print(cw)
         vals = MONTH_WEEK_DIC.values()
         prev = 1
@@ -512,22 +518,30 @@ def get_weeks_between_dates_inclusive(start_date, end_date):
     return tuple(weeks)#sorted(tuple(weeks))
 def gc_week_todate(gcw):
     '''
-    Deprecated. Not yet functional
+    Returns the Sunday starting the GCWeek gcw
     '''
     if len(str(gcw)) == 6:
-        gc_str = gc_week_string(gcw)
-        print(gc_str)
-        mon = datetime.strptime(gc_str,'%Y-%U')# + '-1'
-        print('monday: {}'.format(mon))
-        return [get_previous_sunday(mon),get_following_saturday(mon)]
-    # weeksinyear = (lambda x: 52 if x % 6 == 0 else 53)
-    # winy = weeksinyear(y)
-    # rm = get_retail_month()
-    # if rm != winy:
-    #     winy - rm
-    # y = int(gc_str.split('-')[0])
-    # w = int(gc_str.split('-')[1])
-    # d = y+"-W"+w
+        # DOES NOT WORK
+        # sunday = datetime.strptime(str(gcw),'%Y%U')
+        # print('sunday: {}'.format(sunday))
+        # return [get_previous_sunday(sunday),get_following_saturday(sunday)]
+        gcw_str = gc_week_string(gcw)
+    else:
+        gcw_str = gcw
+    gc_week_tod = GCWeek()
+    month_name = gc_week_tod.retail_month_name(gcw=gcw_str)
+    month_week_start = gc_week_tod.retail_month(gcw=gcw_str)
+    year = gcw_str.split('-')[0]
+    week = gcw_str.split('-')[1]
+    temp_date = datetime.strptime(year+month_name+week,'%Y%B%U')
+    
+    temp_gcw = GCWeek(temp_date)
+    if gc_week_string(temp_gcw.gc_week) == gcw_str:
+        return get_previous_sunday(temp_date)
+    temp_week = gc_week_string(temp_gcw.gc_week).split('-')[1]
+    temp_delta = int(week) - int(temp_week)
+    
+    return get_previous_sunday(temp_date + timedelta(weeks=temp_delta))
 def get_retail_month_start(cw):
         vals = MONTH_WEEK_DIC.values()        
         for v in vals:
